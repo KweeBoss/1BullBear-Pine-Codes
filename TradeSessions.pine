@@ -1,0 +1,548 @@
+// This work is licensed under a Attribution-NonCommercial-ShareAlike 4.0 International (CC BY-NC-SA 4.0) https://creativecommons.org/licenses/by-nc-sa/4.0/
+// © LuxAlgo
+//@version=5
+
+indicator("1BullBear - Trade Sessions"
+  , overlay          = true
+  , max_bars_back    = 500
+  , max_lines_count  = 500
+  , max_boxes_count  = 500
+  , max_labels_count = 500)
+
+
+//Constants
+tf = timeframe.period
+resolution = 20
+currencyA = 'USD'
+currencyB = 'EUR'
+currencyC = 'GBP'
+currencyD = 'JPY'
+currencyE = 'AUD'
+currencyF = 'CAD'
+currencyG = 'NZD'
+currencyH = 'CHF'
+
+//Colors
+color colorA = #ff1100
+color colorB = #2157f3
+color colorC = #4caf50
+color colorD = #e91e63
+color colorE = #ff9800
+color colorF = #ff5d00
+color colorG = #9c27b0
+color colorH = #673ab7
+color colorTransparent = #ffffff00
+
+//Settings
+
+// -- Sessions
+// -- -- America
+
+show_sesa = input(true, '', inline = 'sesa', group = 'NYC Session')
+sesa_txt = input('New York', '', inline = 'sesa', group = 'NYC Session')
+sesa_ses = input.session('1300-1700', '', inline = 'sesa', group = 'NYC Session')
+sesa_css = input.color(#ff5d00, '', inline = 'sesa', group = 'NYC Session')
+
+// -- -- Europe
+
+show_sesb = input(true, '', inline = 'sesb', group = 'LON Session')
+sesb_txt = input('London', '', inline = 'sesb', group = 'LON Session')
+sesb_ses = input.session('0800-1300', '', inline = 'sesb', group = 'LON Session')
+sesb_css = input.color(#2157f3, '', inline = 'sesb', group = 'LON Session')
+
+// -- -- Asia
+
+show_sesc = input(true, '', inline = 'sesc', group = 'ASIA Session')
+sesc_txt = input('Tokyo', ''  , inline = 'sesc', group = 'ASIA Session')
+sesc_ses = input.session('0000-0700', '', inline = 'sesc', group = 'ASIA Session')
+sesc_css = input.color(#e91e63, '', inline = 'sesc', group = 'ASIA Session')
+
+// -- -- Ranges Options
+ses_range = input(true, 'Range', inline = 'ses_overlays', group = 'Ranges Settings')
+ses_tl = input(false, 'Trendline', inline = 'ses_overlays', group = 'Ranges Settings')
+ses_avg = input(false, 'Mean', inline = 'ses_overlays', group = 'Ranges Settings')
+show_outline = input(true, 'Range Outline', group = 'Ranges Settings')
+show_txt = input(true, 'Range Label', group = 'Ranges Settings')
+bg_transp = input.float(90, 'Range Area Transparency', group = 'Ranges Settings')
+
+
+//Dashboard
+show_dash = input(true, 'Show Dashboard', group   = 'Dashboard')
+show_meter = input(true, 'Show Strength Meter', group   = 'Dashboard')
+freq = input.timeframe('D', 'Strength Timeframe', group   = 'Dashboard')
+dash_size = input.string('Small', 'Dashboard Size', options = ['Small', 'Normal'], group   = 'Dashboard')
+
+
+//Divider
+show_day_div = input(true, 'Show Daily Divider', group = 'Dividers')
+
+//Daily
+show_pdhl = input(true, 'Daily', inline = 'daily', group = 'Highs & Lows MTF')
+pdhl_style = input.string('····', '', options = ['⎯⎯⎯', '----', '····'], inline = 'daily', group = 'Highs & Lows MTF')
+pdhl_css = input(#f9681a, '', inline = 'daily', group = 'Highs & Lows MTF')
+
+//Weekly
+show_pwhl = input(true, 'Weekly', inline = 'weekly', group = 'Highs & Lows MTF')
+pwhl_style = input.string('⎯⎯⎯', '', options = ['⎯⎯⎯', '----', '····'], inline = 'weekly', group = 'Highs & Lows MTF')
+pwhl_css = input(#f9681a, '', inline = 'weekly', group = 'Highs & Lows MTF')
+
+//Monthly
+show_pmhl = input(false, 'Monthly', inline = 'monthly', group = 'Highs & Lows MTF')
+pmhl_style = input.string('⎯⎯⎯', '', options = ['⎯⎯⎯', '----', '····'], inline = 'monthly', group = 'Highs & Lows MTF')
+pmhl_css = input(#f9681a, '', inline = 'monthly', group = 'Highs & Lows MTF')
+
+//Functions
+
+// -- Utils
+
+n = bar_index
+oc() => [close, open]
+hl() => [high, low]
+get_avg(session)=>
+    var len = 1
+    var float csma = na
+    var float sma = na
+
+    if session > session[1]
+        len := 1
+        csma := close
+    
+    if session and session == session[1]
+        len += 1    
+        csma += close
+        sma := csma / len
+    
+    sma
+
+set_line(session, y1, y2, session_css)=>
+    var line tl = na
+
+    if session > session[1]
+        tl := line.new(n, close, n, close, color = session_css)
+
+    if session and session == session[1]
+        line.set_y1(tl, y1)
+        line.set_xy2(tl, n, y2)
+
+get_vwap(session) =>
+    var float num = na
+    var float den = na
+
+    if session > session[1]
+        num := close * volume
+        den := volume
+    
+    else if session and session == session[1]
+        num += close * volume
+        den += volume
+    else
+        num := na
+
+    [num, den]
+//Get trendline coordinates
+get_linreg(session)=>
+    var len = 1
+    var float cwma  = na
+    var float csma  = na
+    var float csma2 = na
+
+    var float y1 = na
+    var float y2 = na
+    var float stdev = na 
+    var float r2    = na 
+
+    if session > session[1]
+        len   := 1
+        cwma  := close
+        csma  := close
+        csma2 := close * close
+    
+    if session and session == session[1]
+        len   += 1    
+        csma  += close
+        csma2 += close * close
+        cwma  += close * len
+
+        sma = csma / len
+        wma = cwma / (len * (len + 1) / 2)
+
+        cov   = (wma - sma) * (len+1)/2
+        stdev := math.sqrt(csma2 / len - sma * sma)
+        r2    := cov / (stdev * (math.sqrt(len*len - 1) / (2 * math.sqrt(3))))
+
+        y1 := 4 * sma - 3 * wma
+        y2 := 3 * wma - 2 * sma
+
+    [y1 , y2, stdev, r2]
+// -- Session Range
+get_range(session, session_name, session_css)=>
+    var t = 0 
+    var max = high
+    var min = low
+    var box bx = na
+    var label lbl = na 
+    
+    if session > session[1]
+        t := time
+        max := high
+        min := low
+
+        bx := box.new(n, max, n, min
+          , bgcolor = color.new(session_css, bg_transp)
+          , border_color = show_outline ? session_css : na
+          , border_style = line.style_dotted)
+
+        if show_txt
+            lbl := label.new(t, max, session_name
+              , xloc = xloc.bar_time
+              , textcolor = session_css
+              , style = label.style_label_down
+              , color = color.new(color.white, 100)
+              , size = size.tiny)
+
+    if session and session == session[1]
+        max := math.max(high, max)
+        min := math.min(low, min)
+
+        box.set_top(bx, max)
+        box.set_rightbottom(bx, n, min)
+
+        if show_txt
+            label.set_xy(lbl, int(math.avg(t, time)), max)
+
+var tz = "UTC+00:00"
+
+is_sesa = math.sign(nz(time(tf, sesa_ses, tz)))
+is_sesb = math.sign(nz(time(tf, sesb_ses, tz)))
+is_sesc = math.sign(nz(time(tf, sesc_ses, tz)))
+
+if show_sesa and ses_range
+    get_range(is_sesa, sesa_txt, sesa_css)
+
+if show_sesb and ses_range
+    get_range(is_sesb, sesb_txt, sesb_css)
+
+if show_sesc and ses_range
+    get_range(is_sesc, sesc_txt, sesc_css)
+
+//Mean
+if show_sesa and ses_avg
+    avg = get_avg(is_sesa)
+    set_line(is_sesa, avg, avg, sesa_css)
+
+if show_sesb and ses_avg
+    avg = get_avg(is_sesb)
+    set_line(is_sesb, avg, avg, sesb_css)
+
+if show_sesc and ses_avg
+    avg = get_avg(is_sesc)
+    set_line(is_sesc, avg, avg, sesc_css)
+
+// -- Dashboards
+var table_size = dash_size == 'Tiny' ? size.tiny : dash_size == 'Small' ? size.small : size.normal
+
+// -- -- Primary Dashboard
+hours_1      = hour   (timenow, "America/New_York")
+hours_2      = hour   (timenow, "Europe/London")
+hours_3      = hour   (timenow, "Asia/Tokyo")
+minutes_1    = minute (timenow, "America/New_York")
+minutes_2    = minute (timenow, "Europe/London")
+minutes_3    = minute (timenow, "Asia/Tokyo")
+
+f_format(_val) =>(0 < _val and _val < 10 ? '0' : '') + str.tostring(_val, '##') + (_val == 0 ? '0' : '')
+
+nyc = f_format(hours_1) + ':' + f_format(minutes_1) 
+lon = f_format(hours_2) + ':' + f_format(minutes_2) 
+tyo = f_format(hours_3) + ':' + f_format(minutes_3)
+
+var tb = table.new(position.top_right, 5, 5, bgcolor = color.white, border_color = #e3e3e3, border_width = 1, frame_color = #e3e3e3, frame_width = 1)
+if barstate.isfirst and show_dash
+    table.cell(tb, 0, 0, '1BullBear - Trade Sessions', text_color = color.black, text_size = table_size, width = 4)
+    table.merge_cells(tb, 0, 0, 4, 0)
+    table.cell(tb, 0, 1, 'Session', text_color = color.black, text_size = table_size, width = 3)
+    table.cell(tb, 1, 1, 'Status', text_color = color.black, text_size = table_size, width = 3)
+    table.cell(tb, 2, 1, 'Trend', text_color = color.black, text_size = table_size, width = 3)
+    table.cell(tb, 3, 1, 'Volume', text_color = color.black, text_size = table_size, width = 3)
+    table.cell(tb, 4, 1, 'Clock', text_color = color.black, text_size = table_size, width = 3)
+    table.cell(tb, 0, 2, sesa_txt, text_color = sesa_css, text_size = table_size)
+    table.cell(tb, 0, 3, sesb_txt, text_color = sesb_css, text_size = table_size)
+    table.cell(tb, 0, 4, sesc_txt, text_color = sesc_css, text_size = table_size)
+
+if barstate.islast and show_dash  
+    table.cell(tb, 4, 2, nyc, text_color = color.black, text_size = table_size)
+    table.cell(tb, 4, 3, lon, text_color = color.black, text_size = table_size)
+    table.cell(tb, 4, 4, tyo, text_color = color.black, text_size = table_size)
+    table.cell(tb, 1, 2, is_sesa ? 'Open' : 'Close'
+      , bgcolor = is_sesa ? #089981 : #f23645
+      , text_color = color.white
+      , text_size = table_size)
+    
+    table.cell(tb, 1, 3, is_sesb ? 'Open' : 'Close'
+      , bgcolor = is_sesb ? #089981 : #f23645
+      , text_color = color.white
+      , text_size = table_size)
+    
+    table.cell(tb, 1, 4, is_sesc ? 'Open' : 'Close'
+      , bgcolor = is_sesc ? #089981 : #f23645
+      , text_color = color.white
+      , text_size = table_size)
+
+// -- Trendlines
+
+if show_sesa and (ses_tl or show_dash)
+    [y1, y2, stdev, r2] = get_linreg(is_sesa)
+
+    if show_dash
+        table.cell(tb, 2, 2, str.tostring(r2, '#.##')
+          , bgcolor = r2 > 0 ? #089981 : #f23645
+          , text_color = color.white
+          , text_size = table_size)
+        
+        
+        
+    if ses_tl
+        set_line(is_sesa, y1, y2, sesa_css)
+
+if show_sesb and (ses_tl or show_dash)
+    [y1, y2, stdev, r2] = get_linreg(is_sesb)
+    
+    if show_dash
+        table.cell(tb, 2, 3, str.tostring(r2, '#.##')
+          , bgcolor = r2 > 0 ? #089981 : #f23645
+          , text_color = color.white
+          , text_size = table_size)
+
+        
+        
+    if ses_tl
+        set_line(is_sesb, y1, y2, sesb_css)
+
+if show_sesc and (ses_tl or show_dash)
+    [y1, y2, stdev, r2] = get_linreg(is_sesc)
+    
+    if show_dash
+        table.cell(tb, 2, 4, str.tostring(r2, '#.##')
+          , bgcolor = r2 > 0 ? #089981 : #f23645
+          , text_color = color.white
+          , text_size = table_size)
+
+        
+        
+    if ses_tl
+        set_line(is_sesc, y1, y2, sesc_css)
+
+
+
+//Volume
+
+if show_dash
+    [numa, dena] = get_vwap(is_sesa)
+    [numb, denb] = get_vwap(is_sesb)
+    [numc, denc] = get_vwap(is_sesc)
+    table.cell(tb, 3, 2, str.tostring(dena, format.volume), text_color = color.black, text_size = table_size)
+    table.cell(tb, 3, 3, str.tostring(denb, format.volume), text_color = color.black, text_size = table_size)
+    table.cell(tb, 3, 4, str.tostring(denc, format.volume), text_color = color.black, text_size = table_size)
+// -- Daily Divider
+day = dayofweek
+
+if day != day[1] and show_day_div
+    line.new(n, close + syminfo.mintick, n, close - syminfo.mintick, color  = color.gray, extend = extend.both, style  = line.style_dashed)
+
+plotshape(day != day[1] and day == 1 and show_day_div, "Sunday", shape.labeldown, location.top, na, text = "Sunday", textcolor = color.gray, size = size.tiny, display = display.all - display.status_line, editable = false)
+plotshape(day != day[1] and day == 2 and show_day_div, "Monday", shape.labeldown, location.top, na, text = "Monday", textcolor = color.gray, size = size.tiny, display = display.all - display.status_line, editable = false)
+plotshape(day != day[1] and day == 3 and show_day_div, "Tuesday", shape.labeldown, location.top, na, text = "Tuesday", textcolor = color.gray, size = size.tiny, display = display.all - display.status_line, editable = false)
+plotshape(day != day[1] and day == 4 and show_day_div, "Wednesay", shape.labeldown, location.top, na, text = "Wednesday", textcolor = color.gray, size = size.tiny, display = display.all - display.status_line, editable = false)
+plotshape(day != day[1] and day == 5 and show_day_div, "Thursday", shape.labeldown, location.top, na, text = "Thursday", textcolor = color.gray, size = size.tiny, display = display.all - display.status_line, editable = false)
+plotshape(day != day[1] and day == 6 and show_day_div, "Friday", shape.labeldown, location.top, na, text = "Friday", textcolor = color.gray, size = size.tiny, display = display.all - display.status_line, editable = false)
+plotshape(day != day[1] and day == 7 and show_day_div, "Saturday", shape.labeldown, location.top, na, text = "Saturday", textcolor = color.gray, size = size.tiny, display = display.all - display.status_line, editable = false)
+
+// -- Highs & Lows MTF
+
+get_line_style(style) =>
+    out = switch style
+        '⎯⎯⎯'  => line.style_solid
+        '----' => line.style_dashed
+        '····' => line.style_dotted
+//Set line/labels function for previous high/lows
+phl(h, l, tf, css, linestyle)=>
+    var line high_line = line.new(na,na,na,na, xloc = xloc.bar_time, color = css, style = get_line_style(linestyle))
+    var label high_lbl = label.new(na,na, xloc = xloc.bar_time, text = str.format('P{0}H', tf), color = colorTransparent, textcolor = css, size = size.small, style = label.style_label_left)
+    var line low_line = line.new(na,na,na,na, xloc = xloc.bar_time, color = css, style = get_line_style(linestyle))
+    var label low_lbl = label.new(na,na, xloc = xloc.bar_time, text = str.format('P{0}L', tf), color = colorTransparent, textcolor = css, size = size.small, style = label.style_label_left)
+
+    hy = ta.valuewhen(h != h[1], h, 1)
+    hx = ta.valuewhen(h == high, time, 1)
+    ly = ta.valuewhen(l != l[1], l, 1)
+    lx = ta.valuewhen(l == low, time, 1)
+
+    if barstate.islast
+        ext = time + (time - time[1])*20
+        //High
+        line.set_xy1(high_line, hx, hy)
+        line.set_xy2(high_line, ext, hy)
+        label.set_xy(high_lbl, ext, hy)
+        //Low
+        line.set_xy1(low_line, lx, ly)
+        line.set_xy2(low_line, ext, ly)
+        label.set_xy(low_lbl, ext, ly)
+
+//Daily, Weekly, Monthly high/low
+[pdh, pdl] = request.security(syminfo.tickerid, 'D', hl(), lookahead = barmerge.lookahead_on)
+[pwh, pwl] = request.security(syminfo.tickerid, 'W', hl(), lookahead = barmerge.lookahead_on)
+[pmh, pml] = request.security(syminfo.tickerid, 'M', hl(), lookahead = barmerge.lookahead_on)
+if show_pdhl
+    phl(pdh, pdl, 'D', pdhl_css, pdhl_style)
+if show_pwhl
+    phl(pwh, pwl, 'W', pwhl_css, pwhl_style)
+if show_pmhl
+    phl(pmh, pml, 'M', pmhl_css, pmhl_style)
+
+
+// -- Meter
+dt = timeframe.change(freq)
+// -- -- GET RS
+AB = request.security(str.format('{0}{1}', currencyA, currencyB), timeframe.period, (close - open) / open * 100)
+AC = request.security(str.format('{0}{1}', currencyA, currencyC), timeframe.period, (close - open) / open * 100)
+AD = request.security(str.format('{0}{1}', currencyA, currencyD), timeframe.period, (close - open) / open * 100)
+AE = request.security(str.format('{0}{1}', currencyA, currencyE), timeframe.period, (close - open) / open * 100)
+AF = request.security(str.format('{0}{1}', currencyA, currencyF), timeframe.period, (close - open) / open * 100)
+AG = request.security(str.format('{0}{1}', currencyA, currencyG), timeframe.period, (close - open) / open * 100)
+AH = request.security(str.format('{0}{1}', currencyA, currencyH), timeframe.period, (close - open) / open * 100)
+
+BA = -AB
+BC = request.security(str.format('{0}{1}', currencyB, currencyC), timeframe.period, (close - open) / open * 100)
+BD = request.security(str.format('{0}{1}', currencyB, currencyD), timeframe.period, (close - open) / open * 100)
+BE = request.security(str.format('{0}{1}', currencyB, currencyE), timeframe.period, (close - open) / open * 100)
+BF = request.security(str.format('{0}{1}', currencyB, currencyF), timeframe.period, (close - open) / open * 100)
+BG = request.security(str.format('{0}{1}', currencyB, currencyG), timeframe.period, (close - open) / open * 100)
+BH = request.security(str.format('{0}{1}', currencyB, currencyH), timeframe.period, (close - open) / open * 100)
+
+CA = -AC
+CB = -BC
+CD = request.security(str.format('{0}{1}', currencyC, currencyD), timeframe.period, (close - open) / open * 100)
+CE = request.security(str.format('{0}{1}', currencyC, currencyE), timeframe.period, (close - open) / open * 100)
+CF = request.security(str.format('{0}{1}', currencyC, currencyF), timeframe.period, (close - open) / open * 100)
+CG = request.security(str.format('{0}{1}', currencyC, currencyG), timeframe.period, (close - open) / open * 100)
+CH = request.security(str.format('{0}{1}', currencyC, currencyH), timeframe.period, (close - open) / open * 100)
+
+DA = -AD
+DB = -BD
+DC = -CD
+DE = request.security(str.format('{0}{1}', currencyD, currencyE), timeframe.period, (close - open) / open * 100)
+DF = request.security(str.format('{0}{1}', currencyD, currencyF), timeframe.period, (close - open) / open * 100)
+DG = request.security(str.format('{0}{1}', currencyD, currencyG), timeframe.period, (close - open) / open * 100)
+DH = request.security(str.format('{0}{1}', currencyD, currencyH), timeframe.period, (close - open) / open * 100)
+
+EA = -AE
+EB = -BE
+EC = -CE
+ED = -DE
+EF = request.security(str.format('{0}{1}', currencyE, currencyF), timeframe.period, (close - open) / open * 100)
+EG = request.security(str.format('{0}{1}', currencyE, currencyG), timeframe.period, (close - open) / open * 100)
+EH = request.security(str.format('{0}{1}', currencyE, currencyH), timeframe.period, (close - open) / open * 100)
+
+FA = -AF
+FB = -BF
+FC = -CF
+FD = -DF
+FE = -EF
+FG = request.security(str.format('{0}{1}', currencyF, currencyG), timeframe.period, (close - open) / open * 100)
+FH = request.security(str.format('{0}{1}', currencyF, currencyH), timeframe.period, (close - open) / open * 100)
+
+GA = -AG
+GB = -BG
+GC = -CG
+GD = -DG
+GE = -EG
+GF = -FG
+GH = request.security(str.format('{0}{1}', currencyG, currencyH), timeframe.period, (close - open) / open * 100)
+
+HA = -AH
+HB = -BH
+HC = -CH
+HD = -DH
+HE = -EH
+HF = -FH
+HG = -GH
+
+// -- -- GET TRAIL RS
+var sumA = 0., var prev_A = 0.
+var sumB = 0., var prev_B = 0.
+var sumC = 0., var prev_C = 0.
+var sumD = 0., var prev_D = 0.
+var sumE = 0., var prev_E = 0.
+var sumF = 0., var prev_F = 0.
+var sumG = 0., var prev_G = 0.
+var sumH = 0., var prev_H = 0.
+
+if dt
+    prev_A := sumA
+    prev_B := sumB
+    prev_C := sumC
+    prev_D := sumD
+    prev_E := sumE
+    prev_F := sumF
+    prev_G := sumG
+    prev_H := sumH
+
+    sumA := math.avg(AB, AC, AD, AE, AF, AG, AH)
+    sumB := math.avg(BA, BC, BD, BE, BF, BG, BH)
+    sumC := math.avg(CA, CB, CD, CE, CF, CG, CH)
+    sumD := math.avg(DA, DB, DC, DE, DF, DG, DH)
+    sumE := math.avg(EA, EB, EC, ED, EF, EG, EH)
+    sumF := math.avg(FA, FB, FC, FD, FE, FG, FH)
+    sumG := math.avg(GA, GB, GC, GD, GE, GF, GH)
+    sumH := math.avg(HA, HB, HC, HD, HE, HF, HG)
+
+else
+    sumA += math.avg(AB, AC, AD, AE, AF, AG, AH)
+    sumB += math.avg(BA, BC, BD, BE, BF, BG, BH)
+    sumC += math.avg(CA, CB, CD, CE, CF, CG, CH)
+    sumD += math.avg(DA, DB, DC, DE, DF, DG, DH)
+    sumE += math.avg(EA, EB, EC, ED, EF, EG, EH)
+    sumF += math.avg(FA, FB, FC, FD, FE, FG, FH)
+    sumG += math.avg(GA, GB, GC, GD, GE, GF, GH)
+    sumH += math.avg(HA, HB, HC, HD, HE, HF, HG)
+
+// -- -- METER DASHBOARD
+var tb2 = table.new(position.bottom_right, 8, 23, bgcolor = color.white, border_color = #e3e3e3, border_width = 1, frame_color = #e3e3e3, frame_width = 1)
+
+set_meter(tb2, col, strength, min, max, bg_css)=>
+    scale = (strength - min) / (max - min) * resolution
+    
+    table.clear(tb2, col, 1 , col, 21)
+    for i = 0 to scale
+        css = color.from_gradient(i, 0, scale, color.new(bg_css, 50), bg_css)
+        table.cell(tb2, col, 21 - i, bgcolor = css, text_size = size.tiny, height = 0.1)
+    
+    table.cell(tb2, col, 1, str.format('{0}{1}', strength > 0 ? '+' : '', strength), bgcolor = bg_css, text_size = size.small , text_color = color.white, width = 3)
+
+if barstate.isfirst and show_meter
+    table.cell(tb2, 0, 0, str.format('Currency Relative Strength ({0})', freq), text_color = color.black, text_size = table_size)
+    table.merge_cells(tb2, 0, 0, 7, 0)
+    for i = 0 to 7
+        table.cell(tb2, i, 1, width = 0.1)
+        table.merge_cells(tb2, i, 1, i, 21)
+
+    table.cell(tb2, 0, 22, currencyA, text_color = color.white, text_size = table_size, bgcolor = colorA)
+    table.cell(tb2, 1, 22, currencyB, text_color = color.white, text_size = table_size, bgcolor = colorB)
+    table.cell(tb2, 2, 22, currencyC, text_color = color.white, text_size = table_size, bgcolor = colorC)
+    table.cell(tb2, 3, 22, currencyD, text_color = color.white, text_size = table_size, bgcolor = colorD)
+    table.cell(tb2, 4, 22, currencyE, text_color = color.white, text_size = table_size, bgcolor = colorE)
+    table.cell(tb2, 5, 22, currencyF, text_color = color.white, text_size = table_size, bgcolor = colorF)
+    table.cell(tb2, 6, 22, currencyG, text_color = color.white, text_size = table_size, bgcolor = colorG)
+    table.cell(tb2, 7, 22, currencyH, text_color = color.white, text_size = table_size, bgcolor = colorH)
+
+if barstate.islast and show_meter
+    min = math.min(sumA, sumB, sumC, sumD, sumE, sumF, sumG, sumH)
+    max = math.max(sumA, sumB, sumC, sumD, sumE, sumF, sumG, sumH)
+    
+    set_meter(tb2, 0, sumA, min, max, colorA)
+    set_meter(tb2, 1, sumB, min, max, colorB)
+    set_meter(tb2, 2, sumC, min, max, colorC)
+    set_meter(tb2, 3, sumD, min, max, colorD)
+    set_meter(tb2, 4, sumE, min, max, colorE)
+    set_meter(tb2, 5, sumF, min, max, colorF)
+    set_meter(tb2, 6, sumG, min, max, colorG)
+    set_meter(tb2, 7, sumH, min, max, colorH)
+
