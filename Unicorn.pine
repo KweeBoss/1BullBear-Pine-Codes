@@ -1,0 +1,392 @@
+// This work is licensed under a Attribution-NonCommercial-ShareAlike 4.0 International (CC BY-NC-SA 4.0) https://creativecommons.org/licenses/by-nc-sa/4.0/
+// © KweeBoss_
+// Attribution @LuxAlgo & @TradingView
+
+//@version=5
+indicator("1BullBear® - Unicorn Indicator", shorttitle="1BullBear® - Unicorn", overlay = true, max_bars_back = 500, max_lines_count  = 500)
+import TradingView/TechnicalRating/1 as tr
+[ratingTotal, _, _] = tr.calcRatingAll()
+
+//------------------------------------------------------------------------------
+//Settings
+//------------------------------------------------------------------------------
+
+// Tokyo Session
+show_asian          = input(true, '', inline = 'asian', group = 'Sessions (Regional Times)')
+asian_txt           = input('Tokyo', '', inline = 'asian', group = 'Sessions (Regional Times)')
+asian_time          = input.session('0900-1430', '', inline = 'asian', group = 'Sessions (Regional Times)')
+asian_style         = input.color(#EF5350, '', inline = 'asian', group = 'Sessions (Regional Times)')
+
+// London Session
+show_london         = input(true, '', inline = 'london', group = 'Sessions (Regional Times)')
+london_txt          = input('London', '', inline = 'london', group = 'Sessions (Regional Times)')
+london_time         = input.session('0730-1000', '', inline = 'london', group = 'Sessions (Regional Times)')
+london_style        = input.color(#5DADE2, '', inline = 'london', group = 'Sessions (Regional Times)')
+
+// New York Session
+show_newyork        = input(true, '', inline = 'newyork', group = 'Sessions (Regional Times)')
+newyork_txt         = input('New York', '', inline = 'newyork', group = 'Sessions (Regional Times)')
+newyork_time        = input.session('0800-1030', '', inline = 'newyork', group = 'Sessions (Regional Times)')
+newyork_style       = input.color(#F1C40F, '', inline = 'newyork', group = 'Sessions (Regional Times)')
+
+// Session Overlays
+session_range       = input(true, 'Background', inline = 'range', group = 'Ranges Settings')
+show_outline        = input(true, 'Outline', inline = 'range',group = 'Ranges Settings')
+show_txt            = input(true, 'Label', inline = 'range',group = 'Ranges Settings')
+bg_transp           = input.float(90, 'Range Area Transparency', group = 'Ranges Settings')
+
+// Fractals
+show_fractals       = input(false, 'Fractals', inline = 'fractals',group = 'Helpers')
+
+// Divider
+show_day_div        = input(false, 'Daily Divider', group = 'Helpers')
+
+// Dashboard 
+show_dash           = input(false, 'Dashboard', inline = 'dash',group   = 'Helpers')
+dash_size           = input.string('Small', '', inline = 'dash',options = ['Small', 'Normal'], group   = 'Helpers')
+
+//New York Open
+show_ny_open        = input(false, 'New York Midnight', inline = 'nyop', group = 'Helpers')
+ny_open_style       = input.string('····', '', options = ['⎯⎯⎯', '----', '····'], inline = 'nyop', group = 'Helpers')
+ny_open_css         = input(#f9681a, '', inline = 'nyop', group = 'Helpers')
+
+//Daily High Low
+show_pdhl           = input(false, 'Daily High / Low', inline = 'daily', group = 'Helpers')
+pdhl_style          = input.string('····', '', options = ['⎯⎯⎯', '----', '····'], inline = 'daily', group = 'Helpers')
+pdhl_css            = input(#f9681a, '', inline = 'daily', group = 'Helpers')
+
+//Swing High Low Liquidity
+swing_liquidity     = input(true, 'Swing Liquidity' , inline = 'swing', group = 'Swing Liquidity')
+swing_label         = input.string('Small', 'Labels', inline = 'swing',options = ['Tiny', 'Small', 'Normal'], group = 'Swing Liquidity')
+swing_top_line      = input(color.red,  'Swing Top   '                   , inline = 'swing_top', group = 'Swing Liquidity')
+swing_top_area      = input(color.new(color.red, 50), 'Area', inline = 'swing_top', group = 'Swing Liquidity')
+swing_btm_line      = input(color.teal, 'Swing Low'                   , inline = 'swing_btm', group = 'Swing Liquidity')
+swing_btm_area      = input(color.new(color.teal, 50), 'Area', inline = 'swing_btm', group = 'Swing Liquidity')
+
+
+//------------------------------------------------------------------------------
+//Constants
+//------------------------------------------------------------------------------
+
+// Programmable Constants
+n = bar_index
+oc() => [close, open]
+hl() => [high, low]
+hlv()=> [high, low, volume]
+// Utility Constants
+tf = timeframe.period
+color colorTransparent = #ffffff00
+pivot_length = 14
+filterValue = 0.00
+//------------------------------------------------------------------------------
+//Functions
+//------------------------------------------------------------------------------
+
+// = Fractals =
+var ftop = false
+var fbot = false
+if show_fractals
+    
+    ftop:= high[4] < high[2] and high[3] <= high[2] and high[2] >= high[1] and high[2] > high[0]
+    fbot := low[4] > low[2] and low[3] >= low[2] and low[2] <= low[1] and low[2] < low[0]
+
+plotshape(ftop, title='Top Fractals', style=shape.triangledown, size=size.tiny,location=location.abovebar, color=color.rgb(224, 224, 224), offset=-2)
+plotshape(fbot, title='Bottom Fractals', style=shape.triangleup, size=size.tiny, location=location.belowbar, color=color.rgb(224, 224, 224), offset=-2)
+
+//------------------------------------------------------------------------------
+
+// = Session Overlays =
+
+// Check the session of current bar
+
+is_asian = math.sign(nz(time(tf, asian_time, "Asia/Tokyo")))
+is_london = math.sign(nz(time(tf, london_time, "Europe/London")))
+is_newyork = math.sign(nz(time(tf, newyork_time, "America/New_York")))
+
+get_range(session, session_name, session_style)=>
+    var t = 0 
+    var max = high
+    var min = low
+    var box bx = na
+    var box bxtop = na
+    var box bxbot = na
+    var label lbl = na 
+    var int border_transp = show_outline ? 60 : 100
+    //New Session Start
+    if session == 1 and session != session[1]
+        t := time
+        max := high
+        min := low
+
+        bx := box.new(n, max, n, min
+          , bgcolor = color.new(session_style, bg_transp)
+          , border_color = na)
+        bxtop := box.new(n, max, n, max
+          , bgcolor = color.new(session_style, 100)
+          , border_color = color.new(session_style, border_transp)
+          , border_width = 1)
+        bxbot := box.new(n, max, n, min
+          , bgcolor = color.new(session_style, 100)
+          , border_color = color.new(session_style, border_transp)
+          , border_width = 1)
+
+        if show_txt
+            lbl := label.new(t, max, session_name, xloc = xloc.bar_time
+              , textcolor = session_style
+              , style = label.style_label_down
+              , color = color.new(color.white, 100)
+              , size = size.small)
+        
+    //During Session
+    if session  == 1 and session == session[1]
+    
+        max := math.max(high, max)
+        min := math.min(low, min)
+
+        box.set_top(bx, max)
+        box.set_top(bxtop, max)
+        box.set_top(bxbot, min)
+        box.set_rightbottom(bx, n, min)
+        box.set_rightbottom(bxtop, n, max)
+        box.set_rightbottom(bxbot, n, min)
+
+        if show_txt
+            label.set_xy(lbl, int(math.avg(t, time)), max)
+
+    
+if show_asian 
+    get_range(is_asian, asian_txt, asian_style)
+
+if show_london 
+    get_range(is_london, london_txt, london_style)
+
+if show_newyork 
+    get_range(is_newyork, newyork_txt, newyork_style)
+
+// = Daily Divider =
+day = dayofweek
+if show_day_div
+    day := dayofweek
+    if day != day[1]
+        line.new(n, close + syminfo.mintick, n, close - syminfo.mintick, color  = color.gray, extend = extend.both, style  = line.style_dotted)
+plotshape(day != day[1] and day == 1 and show_day_div, "Sunday", shape.labeldown, location.top, na, text = "Sunday", textcolor = color.gray, size = size.tiny, display = display.all - display.status_line, editable = false)
+plotshape(day != day[1] and day == 2 and show_day_div, "Monday", shape.labeldown, location.top, na, text = "Monday", textcolor = color.gray, size = size.tiny, display = display.all - display.status_line, editable = false)
+plotshape(day != day[1] and day == 3 and show_day_div, "Tuesday", shape.labeldown, location.top, na, text = "Tuesday", textcolor = color.gray, size = size.tiny, display = display.all - display.status_line, editable = false)
+plotshape(day != day[1] and day == 4 and show_day_div, "Wednesay", shape.labeldown, location.top, na, text = "Wednesday", textcolor = color.gray, size = size.tiny, display = display.all - display.status_line, editable = false)
+plotshape(day != day[1] and day == 5 and show_day_div, "Thursday", shape.labeldown, location.top, na, text = "Thursday", textcolor = color.gray, size = size.tiny, display = display.all - display.status_line, editable = false)
+plotshape(day != day[1] and day == 6 and show_day_div, "Friday", shape.labeldown, location.top, na, text = "Friday", textcolor = color.gray, size = size.tiny, display = display.all - display.status_line, editable = false)
+plotshape(day != day[1] and day == 7 and show_day_div, "Saturday", shape.labeldown, location.top, na, text = "Saturday", textcolor = color.gray, size = size.tiny, display = display.all - display.status_line, editable = false)
+
+// = Dashboard =
+
+if  show_dash
+    ta_rating = tr.ratingStatus(ratingTotal)
+    ta_color =  color.black
+    if ta_rating == 'Strong\nBuy '
+        ta_rating := 'Momentum 🔋 STRONG BUY'
+        ta_color := color.new(#229954, 0)
+    else if ta_rating == 'Strong\nSell'
+        ta_rating := 'Momentum 🪫 STRONG SELL'
+        ta_color := color.new(#F44336, 0)
+    else if ta_rating == 'Neutral'
+        ta_rating := 'Momentum ⚪ NEUTRAL'
+        ta_color := color.new(#D7DBDD, 0)
+    else if ta_rating == 'Buy'
+        ta_rating := 'Momentum 🟢 BUY'
+        ta_color := color.new(#58D68D, 0)
+    else if ta_rating == 'Sell'
+        ta_rating := 'Momentum 🔴 SELL'
+        ta_color := color.new(#EC7063, 0)
+
+    var table infoBox = table.new(position.top_right, 1, 1)
+    if barstate.isfirst
+        table.cell(infoBox, 0, 0, "", text_color = chart.fg_color)
+    else if barstate.islast
+        table.cell_set_text(infoBox, 0, 0, ta_rating)
+        table.cell_set_text_color(infoBox, 0, 0, ta_color)
+
+ // -- Highs & Lows MTF
+
+get_line_style(style) =>
+    out = switch style
+        '⎯⎯⎯'  => line.style_solid
+        '----' => line.style_dashed
+        '····' => line.style_dotted
+//Set line/labels function for previous high/lows
+phl(h, l, tf, css, linestyle)=>
+    var line high_line = line.new(na,na,na,na, xloc = xloc.bar_time, color = css, style = get_line_style(linestyle))
+    var label high_lbl = label.new(na,na, xloc = xloc.bar_time, text = str.format('P{0}H', tf), color = colorTransparent, textcolor = css, size = size.small, style = label.style_label_left)
+    var line low_line = line.new(na,na,na,na, xloc = xloc.bar_time, color = css, style = get_line_style(linestyle))
+    var label low_lbl = label.new(na,na, xloc = xloc.bar_time, text = str.format('P{0}L', tf), color = colorTransparent, textcolor = css, size = size.small, style = label.style_label_left)
+
+    hy = ta.valuewhen(h != h[1], h, 1)
+    hx = ta.valuewhen(h == high, time, 1)
+    ly = ta.valuewhen(l != l[1], l, 1)
+    lx = ta.valuewhen(l == low, time, 1)
+
+    if barstate.islast
+        ext = time + (time - time[1])*20
+        //High
+        line.set_xy1(high_line, hx, hy)
+        line.set_xy2(high_line, ext, hy)
+        label.set_xy(high_lbl, ext, hy)
+        //Low
+        line.set_xy1(low_line, lx, ly)
+        line.set_xy2(low_line, ext, ly)
+        label.set_xy(low_lbl, ext, ly)
+
+//Daily, Weekly, Monthly high/low
+[pdh, pdl] = request.security(syminfo.tickerid, 'D', hl(), lookahead = barmerge.lookahead_on)
+if show_pdhl
+    
+    phl(pdh, pdl, 'D', pdhl_css, pdhl_style)
+ny_open( nyopen_css, nyopen_style ) =>
+    
+    var line nyopen_line = line.new(na,na,na,na, xloc = xloc.bar_time, color = nyopen_css, style = get_line_style(nyopen_style))
+    var label nyopen_lbl = label.new(na,na,"NYOP", xloc = xloc.bar_time, color = colorTransparent, textcolor = nyopen_css, size = size.small, style = label.style_label_left)
+    var float nyopen_price = 0.00
+    nyx = ta.valuewhen(hour(time,"America/New_York" ) == 0 and minute(time,"America/New_York" ) == 0, time, 0)
+    if hour(time,"America/New_York" ) == 0 and minute(time,"America/New_York" ) == 0
+        nyopen_price := open
+    if barstate.islast
+        ext = time + (time - time[1])*20
+        //High
+        line.set_xy1(nyopen_line, nyx, nyopen_price)
+        line.set_xy2(nyopen_line, ext, nyopen_price)
+        label.set_xy(nyopen_lbl, ext, nyopen_price)
+if show_ny_open and timeframe.isintraday and timeframe.multiplier <= 60
+    ny_open(ny_open_css, ny_open_style)
+
+//------------------------------------------------------------------------------
+//Swing High Low Liquidity
+//------------------------------------------------------------------------------
+
+// -- Pivot High & Low
+
+//Get Swing High Low Liquidity Functions
+get_counts(condition, top, btm)=>
+    var vol = 0.
+    if condition
+        vol := 0.
+    else
+        vol += low[pivot_length] < top and high[pivot_length] > btm ? volume[pivot_length] : 0
+
+    vol
+
+//Set Swing High Low Liquidity Functions
+set_label(vol, x, y, css, lbl_style)=>
+    var label lbl = na
+    var label_size = switch swing_label
+        'Tiny' => size.tiny
+        'Small' => size.small
+        'Normal' => size.normal
+
+    target = vol
+
+    if ta.crossover(target, filterValue)
+        lbl := label.new(x, y, str.tostring(vol, format.volume)
+          , style = lbl_style
+          , size = label_size
+          , color = #00000000
+          , textcolor = css)
+
+    if target > filterValue
+        label.set_text(lbl, str.tostring(vol, format.volume))
+set_level(condition, crossed, value, vol, css)=>
+    var line lvl = na
+
+    target = vol
+
+    if condition
+        if target[1] < filterValue[1]
+            line.delete(lvl[1])
+        else if not crossed[1]
+            line.set_x2(lvl, n - pivot_length)
+
+        lvl := line.new(n - pivot_length, value, n, value
+          , color = na)
+
+    if not crossed[1]
+        line.set_x2(lvl, n+3)
+    
+    if crossed and not crossed[1]
+        line.set_x2(lvl, n)
+        line.set_style(lvl, line.style_dashed)
+
+    if target > filterValue
+        line.set_color(lvl, css)
+
+set_zone(condition, x, top, btm, vol, css)=>
+    var box bx = na
+
+    target = vol
+
+    if ta.crossover(target, filterValue)
+        bx := box.new(x, top, x , btm
+          , border_color = na
+          , bgcolor = css)
+    
+    if target > filterValue
+        box.set_right(bx, x )
+
+//Pivot high
+var float ph_top = na
+var float ph_btm = na
+var bool  ph_crossed = na
+var       ph_x1 = 0
+var box   ph_bx = box.new(na,na,na,na, bgcolor = color.new(swing_top_area, 80), border_color = na)
+
+ph = ta.pivothigh(pivot_length, pivot_length)
+ph_vol = get_counts(ph, ph_top, ph_btm)
+
+if ph and swing_liquidity 
+    ph_top := high[pivot_length]
+    ph_btm := math.max(close[pivot_length], open[pivot_length])   
+    ph_x1 := n - pivot_length
+    ph_crossed := false
+
+    box.set_lefttop(ph_bx, ph_x1, ph_top)
+    box.set_rightbottom(ph_bx, ph_x1, ph_btm)
+else
+    ph_crossed := close > ph_top ? true : ph_crossed
+    
+    if ph_crossed
+        box.set_right(ph_bx, ph_x1)
+    else
+        box.set_right(ph_bx, n+3)
+
+//Pivot low
+var float pl_top = na
+var float pl_btm = na
+var bool  pl_crossed = na
+var       pl_x1 = 0
+var box   pl_bx = box.new(na,na,na,na, bgcolor = color.new(swing_btm_area, 80), border_color = na)
+
+pl = ta.pivotlow(pivot_length, pivot_length)
+pl_vol = get_counts(pl, pl_top, pl_btm)
+
+if pl and swing_liquidity 
+    pl_top := math.min(close[pivot_length], open[pivot_length])
+    pl_btm := low[pivot_length]
+    
+    pl_x1 := n - pivot_length
+    pl_crossed := false
+    
+    box.set_lefttop(pl_bx, pl_x1, pl_top)
+    box.set_rightbottom(pl_bx, pl_x1, pl_btm)
+else
+    pl_crossed := close < pl_btm ? true : pl_crossed
+
+    if pl_crossed
+        box.set_right(pl_bx, pl_x1)
+    else
+        box.set_right(pl_bx, n+3)
+// Display liquidity high levels/blocks
+if swing_liquidity 
+    set_zone(ph, ph_x1, ph_top, ph_btm, ph_vol, swing_top_area)
+    set_level(ph, ph_crossed, ph_top, ph_vol, swing_top_line)
+    set_label(ph_vol, ph_x1, ph_top, swing_top_line, label.style_label_down)
+    set_zone(pl, pl_x1, pl_top, pl_btm, pl_vol, swing_btm_area)
+    set_level(pl, pl_crossed, pl_btm, pl_vol, swing_btm_line)
+    set_label(pl_vol, pl_x1, pl_btm, swing_btm_line, label.style_label_up)
+
